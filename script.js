@@ -34,6 +34,8 @@ document.addEventListener('DOMContentLoaded', function() {
     let presets = [];
     let currentPresetIndex = -1;
     let isCustomMode = false;
+    let isRainbowMode = false;  // Add flag to track rainbow mode
+    let rainbowColors = [];     // Store rainbow colors
     
     // Animation state variables
     let animationRunning = false;
@@ -65,11 +67,24 @@ document.addEventListener('DOMContentLoaded', function() {
                 }
             });
             
-            // Activate custom button using current base color instead of hardcoded color
-            const baseColor = colorPicker.value;
-            customButton.style.backgroundColor = baseColor;
-            customButton.style.borderColor = darkenColor(baseColor, 20);
-            customButton.style.color = isLightColor(baseColor) ? 'black' : 'white';
+            // Check if we're coming from rainbow preset and preserve that state
+            if (currentPresetIndex >= 0 && presets[currentPresetIndex].isRainbow) {
+                isRainbowMode = true;
+                rainbowColors = [...presets[currentPresetIndex].rainbowColors];
+                
+                // Set button color to a rainbow gradient or the first color
+                const firstRainbowColor = rainbowColors[0];
+                customButton.style.backgroundColor = firstRainbowColor;
+                customButton.style.borderColor = darkenColor(firstRainbowColor, 20);
+                customButton.style.color = isLightColor(firstRainbowColor) ? 'black' : 'white';
+            } else {
+                // Regular preset or already in custom mode
+                isRainbowMode = false;
+                const baseColor = colorPicker.value;
+                customButton.style.backgroundColor = baseColor;
+                customButton.style.borderColor = darkenColor(baseColor, 20);
+                customButton.style.color = isLightColor(baseColor) ? 'black' : 'white';
+            }
             
             // Set currentPresetIndex to -1 to indicate custom mode
             currentPresetIndex = -1;
@@ -81,14 +96,18 @@ document.addEventListener('DOMContentLoaded', function() {
             // Show "Custom" in both language displays
             updatePresetNameDisplay('定制', 'Custom');
             
-            // Update the grid colors with current color picker value
-            updateColors(colorPicker.value, randomSlider.value);
+            // Update the grid colors with current color picker value or rainbow colors
+            if (isRainbowMode) {
+                updateColors(colorPicker.value, randomSlider.value, true);
+            } else {
+                updateColors(colorPicker.value, randomSlider.value);
+            }
             
             // Make sure the toggle slider has the right color if smooth transitions are enabled
             if (smoothTransitionToggle.checked) {
                 const toggleSlider = document.querySelector('.toggle-slider');
                 if (toggleSlider) {
-                    toggleSlider.style.backgroundColor = colorPicker.value;
+                    toggleSlider.style.backgroundColor = isRainbowMode ? rainbowColors[0] : colorPicker.value;
                 }
             }
         } else {
@@ -101,8 +120,19 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Sync the custom panel values with current settings
     function syncCustomPanelWithCurrentSettings() {
-        colorPicker.value = hexValue.textContent;
-        hexDisplay.textContent = hexValue.textContent;
+        // If we're in rainbow mode from preset, show indication in the color picker area
+        if (isRainbowMode && rainbowColors.length > 0) {
+            // Set color picker to first rainbow color
+            colorPicker.value = rainbowColors[0];
+            hexValue.textContent = "Rainbow";
+            hexDisplay.textContent = "Rainbow";
+            
+            // If possible, we could also visually indicate all rainbow colors here
+            // For example by adding a rainbow gradient to the color picker or nearby element
+        } else {
+            colorPicker.value = hexValue.textContent;
+            hexDisplay.textContent = hexValue.textContent;
+        }
         
         gapColorPicker.value = gapHexValue.textContent;
         gapHexDisplay.textContent = gapHexValue.textContent;
@@ -131,7 +161,11 @@ document.addEventListener('DOMContentLoaded', function() {
         }
         
         // After syncing controls, make sure to update the visual display
-        updateColors(colorPicker.value, randomSlider.value);
+        if (isRainbowMode) {
+            updateColors(colorPicker.value, randomSlider.value, true);
+        } else {
+            updateColors(colorPicker.value, randomSlider.value);
+        }
         updateGapColor(gapColorPicker.value);
         
         // If using smooth transitions, update them with current settings
@@ -142,6 +176,13 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Update all displays when custom sliders change
     colorPicker.addEventListener('input', function() {
+        // If we were in rainbow mode, exit it when user manually changes the color
+        if (isRainbowMode) {
+            isRainbowMode = false;
+            hexValue.textContent = this.value;
+            hexDisplay.textContent = this.value;
+        }
+        
         const newColor = this.value;
         hexValue.textContent = newColor;
         hexDisplay.textContent = newColor;
@@ -339,6 +380,14 @@ document.addEventListener('DOMContentLoaded', function() {
             const preset = presets[index];
             currentPresetIndex = index;
             
+            // Check if this is a rainbow preset
+            if (preset.isRainbow) {
+                isRainbowMode = true;
+                rainbowColors = [...preset.rainbowColors];
+            } else {
+                isRainbowMode = false;
+            }
+            
             // First update the color picker value
             colorPicker.value = preset.baseColor;
             hexValue.textContent = preset.baseColor;
@@ -404,7 +453,7 @@ document.addEventListener('DOMContentLoaded', function() {
             
             // For rainbow preset, we need special handling of colors
             if (preset.isRainbow) {
-                updateColors(preset.baseColor, preset.randomValue);
+                updateColors(preset.baseColor, preset.randomValue, true);
             } else {
                 updateColors(preset.baseColor, preset.randomValue);
             }
@@ -561,6 +610,12 @@ document.addEventListener('DOMContentLoaded', function() {
         localStorage.setItem('mosaicAnimationDuration', durationSlider.value);
         localStorage.setItem('mosaicAnimationFramerate', framerateSlider.value);
         localStorage.setItem('mosaicSmoothTransitions', smoothTransitions);
+        localStorage.setItem('mosaicIsRainbowMode', isRainbowMode);
+        
+        // Save rainbow colors if we're in rainbow mode
+        if (isRainbowMode && rainbowColors.length > 0) {
+            localStorage.setItem('mosaicRainbowColors', JSON.stringify(rainbowColors));
+        }
     }
     
     // Load settings from localStorage
@@ -644,6 +699,23 @@ document.addEventListener('DOMContentLoaded', function() {
                     updateColors(colorPicker.value, randomSlider.value);
                 }, frameInterval);
             }, 500); // Start animation after a short delay
+        }
+        
+        // Load rainbow mode settings if they exist
+        const savedRainbowMode = localStorage.getItem('mosaicIsRainbowMode');
+        if (savedRainbowMode === 'true') {
+            isRainbowMode = true;
+            
+            // Try to load saved rainbow colors
+            const savedRainbowColors = localStorage.getItem('mosaicRainbowColors');
+            if (savedRainbowColors) {
+                try {
+                    rainbowColors = JSON.parse(savedRainbowColors);
+                } catch (e) {
+                    console.error('Error parsing saved rainbow colors', e);
+                    isRainbowMode = false; // Fallback if colors can't be parsed
+                }
+            }
         }
     }
     
@@ -737,52 +809,60 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     
     // Update colors with a staggered approach to make transitions more visible
-    function updateColors(hexColor, randomnessLevel) {
+    function updateColors(hexColor, randomnessLevel, forceRainbow = false) {
         const cells = document.querySelectorAll('.grid-cell');
         
-        // Check if current preset is the rainbow preset
-        const isRainbowPreset = currentPresetIndex >= 0 && 
-            presets[currentPresetIndex].isRainbow === true;
+        // Check if current preset is the rainbow preset or we're in rainbow custom mode
+        const useRainbow = forceRainbow || isRainbowMode || 
+            (currentPresetIndex >= 0 && presets[currentPresetIndex].isRainbow === true);
         
-        if (isRainbowPreset && cells.length > 0) {
-            // Get rainbow colors from preset
-            const rainbowColors = presets[currentPresetIndex].rainbowColors;
-            
-            // Calculate the total number of rows in the grid
-            const totalCells = cells.length;
-            const cols = parseInt(mosaic.style.gridTemplateColumns.match(/repeat\((\d+)/)[1]);
-            const rows = Math.ceil(totalCells / cols);
-            
-            // Convert randomness level to integer
-            const level = parseInt(randomnessLevel);
-            
-            // If using smooth transitions, apply colors with some delay between cells
-            if (smoothTransitions && cells.length > 0) {
-                const cellArray = Array.from(cells);
-                const staggerDelay = Math.min(5, frameInterval / 10); // Small stagger delay
-                
-                cellArray.forEach((cell, index) => {
-                    setTimeout(() => {
-                        const row = Math.floor(index / cols);
-                        const section = Math.floor(row / (rows / 7)); // Determine which of the 7 sections
-                        const colorIndex = Math.min(section, rainbowColors.length - 1);
-                        
-                        // Apply rainbow color with randomness
-                        applyRainbowColorToCell(cell, rainbowColors[colorIndex], level);
-                    }, index % 5 * staggerDelay); // Small groups for staggered updates
-                });
+        if (useRainbow && cells.length > 0) {
+            // Get rainbow colors - either from preset or stored in our variable
+            let colors;
+            if (currentPresetIndex >= 0 && presets[currentPresetIndex].isRainbow) {
+                colors = presets[currentPresetIndex].rainbowColors;
             } else {
-                cells.forEach((cell, index) => {
-                    const row = Math.floor(index / cols);
-                    const section = Math.floor(row / (rows / 7)); // Determine which of the 7 sections
-                    const colorIndex = Math.min(section, rainbowColors.length - 1);
-                    
-                    // Apply rainbow color with randomness
-                    applyRainbowColorToCell(cell, rainbowColors[colorIndex], level);
-                });
+                colors = rainbowColors;
             }
             
-            return; // Exit the function early
+            // Only proceed if we have rainbow colors
+            if (colors && colors.length > 0) {
+                // Calculate the total number of rows in the grid
+                const totalCells = cells.length;
+                const cols = parseInt(mosaic.style.gridTemplateColumns.match(/repeat\((\d+)/)[1]);
+                const rows = Math.ceil(totalCells / cols);
+                
+                // Convert randomness level to integer
+                const level = parseInt(randomnessLevel);
+                
+                // If using smooth transitions, apply colors with some delay between cells
+                if (smoothTransitions && cells.length > 0) {
+                    const cellArray = Array.from(cells);
+                    const staggerDelay = Math.min(5, frameInterval / 10); // Small stagger delay
+                    
+                    cellArray.forEach((cell, index) => {
+                        setTimeout(() => {
+                            const row = Math.floor(index / cols);
+                            const section = Math.floor(row / (rows / 7)); // Determine which of the 7 sections
+                            const colorIndex = Math.min(section, colors.length - 1);
+                            
+                            // Apply rainbow color with randomness
+                            applyRainbowColorToCell(cell, colors[colorIndex], level);
+                        }, index % 5 * staggerDelay); // Small groups for staggered updates
+                    });
+                } else {
+                    cells.forEach((cell, index) => {
+                        const row = Math.floor(index / cols);
+                        const section = Math.floor(row / (rows / 7)); // Determine which of the 7 sections
+                        const colorIndex = Math.min(section, colors.length - 1);
+                        
+                        // Apply rainbow color with randomness
+                        applyRainbowColorToCell(cell, colors[colorIndex], level);
+                    });
+                }
+                
+                return; // Exit the function early
+            }
         }
         
         // Original color handling for non-rainbow presets
